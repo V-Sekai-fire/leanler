@@ -1,29 +1,49 @@
+# Build, type-check and test Leanler on macOS and Linux. Erlang and Elixir come from pixi; Lean
+# comes from elan, because conda-forge has no Lean 4. The test run builds test/fixture with the
+# real toolchain and calls it as a NIF and as a C node, so a green run covers the Linux link line.
 name: ci
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+        os: [ubuntu-24.04, macos-14]
     steps:
       - uses: actions/checkout@v4
-      - uses: erlef/setup-beam@v1
+
+      - uses: prefix-dev/setup-pixi@v0.8.14
         with:
-          otp-version: "28"
-          elixir-version: "1.19"
+          cache: true
+
       - name: Install elan
         run: |
-          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - run: mix compile --warnings-as-errors
-      - run: mix dialyzer
-        env:
-          MIX_ENV: dev
-      - run: epmd -daemon
-      - run: mix test
+
+      - name: Install the fixture's toolchain
+        run: |
+          export PATH="$HOME/.elan/bin:$PATH"
+          cd test/fixture && lean --version
+
+      - name: Compile (warnings are errors)
+        run: pixi run compile
+
+      - name: Dialyzer
+        run: pixi run dialyzer
+
+      - name: Golden, invariant, control and end-to-end tests
+        run: pixi run test

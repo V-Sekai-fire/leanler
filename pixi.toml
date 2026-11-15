@@ -1,0 +1,15 @@
+# Tools come from pixi. Lean has no conda-forge build, so elan installs it (see .github/workflows/ci.yml).
+[workspace]
+name = "leanler"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+erlang = ">=28"
+elixir = ">=1.19"
+
+[tasks]
+deps = "mix local.hex --force && mix local.rebar --force && mix deps.get"
+compile = { cmd = "mix compile --warnings-as-errors", depends-on = ["deps"] }
+dialyzer = { cmd = "mix dialyzer", env = { MIX_ENV = "dev" }, depends-on = ["deps"] }
+test = { cmd = "epmd -daemon && mix test", depends-on = ["compile"] }
