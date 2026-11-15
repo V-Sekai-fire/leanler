@@ -109,11 +109,25 @@ defmodule Leanler.Gen do
     #include <string.h>
     #include <stdint.h>
     #include <unistd.h>
+    #include <signal.h>
+    #include <execinfo.h>
     #include <lean/lean.h>
 
     #{lean_decls(config, roots)}
 
     #{lean_init(config, roots)}
+
+    /* A crash in Lean or in this shim reports itself on stderr (the owner logs it) instead of
+       leaving only an exit status. LEANLER_TRACE=1 also logs each call before it runs. */
+    static int cn_trace = 0;
+
+    static void cn_crash(int sig) {
+      void *frames[32];
+      int n = backtrace(frames, 32);
+      dprintf(2, "leanler cnode: fatal signal %d\\n", sig);
+      backtrace_symbols_fd(frames, n, 2);
+      _exit(128 + sig);
+    }
 
     static void cn_error(ei_x_buff *out, const char *reason) {
       ei_x_encode_tuple_header(out, 2);
@@ -181,6 +195,12 @@ defmodule Leanler.Gen do
       const char *parent = argv[2];
       const char *registered = argv[3];
       const char *cookie = getenv("LEANLER_COOKIE");
+      cn_trace = getenv("LEANLER_TRACE") != NULL;
+      if (cn_trace) dprintf(2, "leanler cnode: starting\\n");
+      signal(SIGSEGV, cn_crash);
+      signal(SIGBUS, cn_crash);
+      signal(SIGILL, cn_crash);
+      signal(SIGFPE, cn_crash);
       const char *at = strchr(parent, '@');
       if (cookie == NULL || at == NULL) {
         fprintf(stderr, "leanler: need LEANLER_COOKIE and a name@host parent node\\n");
@@ -247,7 +267,9 @@ defmodule Leanler.Gen do
           ei_x_free(&out);
           break;
         }
+        if (cn_trace) dprintf(2, "leanler cnode: call %s/%d\\n", fun, nargs);
         cn_dispatch(fun, in.buff, idx, nargs, &out);
+        if (cn_trace) dprintf(2, "leanler cnode: done %s\\n", fun);
         ei_send(fd, &from, out.buff, out.index);
         ei_x_free(&out);
       }
