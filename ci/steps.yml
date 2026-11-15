@@ -1,0 +1,13 @@
+# The CI commands as plain `run:` steps, so one file serves both places:
+#   locally:  nix run github:samrose/beam-action -- ci/steps.yml
+#   in CI:    .github/workflows/ci.yml calls the same line.
+# beam-action runs every step of every job in order and stops at the first failure. It skips
+# nothing and has no matrix, `uses:` or `env:`, so each step carries its own PATH.
+# Needs pixi on PATH (Erlang and Elixir come from it). Lean comes from elan, installed below.
+jobs:
+  ci:
+    steps:
+      - run: command -v elan >/dev/null || ls "$HOME/.elan/bin/elan" >/dev/null 2>&1 || (curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none)
+      - run: export PATH="$HOME/.elan/bin:$PATH" && pixi run compile
+      - run: export PATH="$HOME/.elan/bin:$PATH" && pixi run dialyzer
+      - run: export PATH="$HOME/.elan/bin:$PATH" && pixi run test

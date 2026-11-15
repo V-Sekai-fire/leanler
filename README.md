@@ -97,8 +97,9 @@ Requires elan (`lake` and `lean` on `PATH`), a C compiler, Elixir 1.18+, and OTP
   process crash, which is why `:cnode` exists.
 - Lean runs with the runtime module initialised, not the full `lean_initialize`. Code that
   needs the elaborator (`Lean.Environment`, `Lean.Elab`) is not supported.
-- Verified on macOS arm64 (Lean 4.34.1, OTP 29). The Linux link line (`--start-group`,
-  `--gc-sections`, `-lstdc++`) is written but not run yet.
+- Verified on macOS arm64 and Linux arm64 (Lean 4.34.1, OTP 29). On Linux a NIF links the
+  toolchain's shared `libleanshared`, because the static Lean runtime is not position independent,
+  so it needs the toolchain it was built with at run time. A Linux C node links statically.
 - A NIF bundles the Lean runtime in the `.so` (13 MB for the persona); a C node is 100 MB when
   `libLean` is reachable.
 
@@ -107,6 +108,7 @@ Requires elan (`lake` and `lean` on `PATH`), a C compiler, Elixir 1.18+, and OTP
 ```
 mix test              # 61 tests: 4 doctests, 19 properties, 38 examples
 mix dialyzer          # types (dialyxir); runs clean
+nix run github:samrose/beam-action -- ci/steps.yml   # the same steps CI runs
 LEANLER_REGOLD=1 mix test test/golden_test.exs   # rewrite golden files; read the diff first
 ```
 

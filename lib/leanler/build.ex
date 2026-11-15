@@ -174,27 +174,65 @@ defmodule Leanler.Build do
         Path.join([prefix, "lib", "libgmp.a"])
       ])
 
-    missing = Enum.reject(archives, &File.exists?/1)
+    {flavor, _libs} = platform()
+
+    case {flavor, config.mode} do
+      {:linux, :nif} -> link_shared(config, prefix, lean_lib, objects, staged, log)
+      _ -> link_static(config, prefix, flavor, archives, objects, staged, log)
+    end
+  end
+
+  # Lean's static runtime on x86-64 Linux is not position independent (libleanrt.a has
+  # local-exec TLS relocations), so a NIF cannot embed it. Link the toolchain's own shared
+  # libraries instead, which carry the runtime, Init, Std and Lean, and record their directories
+  # as rpath. The NIF then needs the toolchain it was built with at run time.
+  defp link_shared(config, prefix, lean_lib, objects, staged, log) do
+    shared = ["libInit_shared.so", "libleanshared.so"]
+    missing = shared |> Enum.map(&Path.join(lean_lib, &1)) |> Enum.reject(&File.exists?/1)
+
+    if missing != [] do
+      {:error, "leanler: toolchain shared libraries missing: #{Enum.join(missing, ", ")}"}
+    else
+      args =
+        ["-shared", "-o", staged | objects] ++
+          ["-L", lean_lib, "-lInit_shared", "-lleanshared"] ++
+          ["-Wl,-rpath," <> lean_lib, "-Wl,-rpath," <> Path.join(prefix, "lib")] ++
+          ["-lm", "-ldl", "-lpthread"]
+
+      with {:ok, _} <- cc(config, args, staged, log), do: {:ok, staged}
+    end
+  end
+
+  defp link_static(config, prefix, flavor, archives, objects, staged, log) do
+    # On Linux the runtime is built against the toolchain's own libc++, not libstdc++.
+    cpp =
+      case flavor do
+        :darwin -> []
+        :linux -> Enum.map(["libc++.a", "libc++abi.a", "libunwind.a"], &Path.join([prefix, "lib", &1]))
+      end
+
+    needed = archives ++ cpp
+    missing = Enum.reject(needed, &File.exists?/1)
 
     if missing != [] do
       {:error, "leanler: toolchain archives missing: #{Enum.join(missing, ", ")}"}
     else
-      {flavor, system_libs} = platform()
+      system = if flavor == :darwin, do: ["-lc++", "-lpthread"], else: ["-lm", "-ldl", "-lpthread"]
 
       args =
         case config.mode do
           :nif ->
-            shared = if flavor == :darwin, do: ["-dynamiclib", "-undefined", "dynamic_lookup"], else: ["-shared"]
-            shared ++ ["-o", staged | objects] ++ group(flavor, archives) ++ system_libs
+            ["-dynamiclib", "-undefined", "dynamic_lookup", "-o", staged | objects] ++
+              group(flavor, archives) ++ system
 
           :cnode ->
             strip = if flavor == :darwin, do: ["-Wl,-dead_strip"], else: ["-Wl,--gc-sections"]
-            ["-o", staged | objects] ++ strip ++ group(flavor, archives) ++ ["-L", ei_dir("lib"), "-lei"] ++ system_libs
+
+            ["-o", staged | objects] ++
+              strip ++ group(flavor, needed) ++ ["-L", ei_dir("lib"), "-lei"] ++ system
         end
 
-      with {:ok, _} <- cc(config, args, staged, log) do
-        {:ok, staged}
-      end
+      with {:ok, _} <- cc(config, args, staged, log), do: {:ok, staged}
     end
   end
 
@@ -203,8 +241,8 @@ defmodule Leanler.Build do
 
   defp platform do
     case :os.type() do
-      {:unix, :darwin} -> {:darwin, ["-lc++", "-lpthread"]}
-      {:unix, _} -> {:linux, ["-lstdc++", "-lm", "-ldl", "-lpthread"]}
+      {:unix, :darwin} -> {:darwin, []}
+      {:unix, _} -> {:linux, []}
     end
   end
 

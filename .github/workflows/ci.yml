@@ -1,6 +1,7 @@
-# Build, type-check and test Leanler on macOS and Linux. Erlang and Elixir come from pixi; Lean
-# comes from elan, because conda-forge has no Lean 4. The test run builds test/fixture with the
-# real toolchain and calls it as a NIF and as a C node, so a green run covers the Linux link line.
+# Build, type-check and test Leanler on macOS and Linux. The steps live in ci/steps.yml and run
+# under samrose/beam-action, so the same file runs locally. Erlang and Elixir come from pixi; Lean
+# comes from elan, because conda-forge has no Lean 4. The tests build test/fixture with the real
+# toolchain and call it as a NIF and as a C node, so a green run covers each platform's link line.
 name: ci
 
 on:
@@ -17,7 +18,7 @@ jobs:
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -29,21 +30,7 @@ jobs:
         with:
           cache: true
 
-      - name: Install elan
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: DeterminateSystems/nix-installer-action@main
 
-      - name: Install the fixture's toolchain
-        run: |
-          export PATH="$HOME/.elan/bin:$PATH"
-          cd test/fixture && lean --version
-
-      - name: Compile (warnings are errors)
-        run: pixi run compile
-
-      - name: Dialyzer
-        run: pixi run dialyzer
-
-      - name: Golden, invariant, control and end-to-end tests
-        run: pixi run test
+      - name: Run ci/steps.yml with beam-action
+        run: nix run github:samrose/beam-action -- ci/steps.yml
