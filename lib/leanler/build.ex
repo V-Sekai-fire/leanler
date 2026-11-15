@@ -178,7 +178,40 @@ defmodule Leanler.Build do
 
     case {flavor, config.mode} do
       {:linux, :nif} -> link_shared(config, prefix, lean_lib, objects, staged, log)
-      _ -> link_static(config, prefix, flavor, archives, objects, staged, log)
+      {:linux, :cnode} -> link_leanc(config, prefix, lean_lib, wanted, objects, staged, log)
+      {:darwin, _} -> link_static(config, archives, objects, staged, log)
+    end
+  end
+
+  # A static Linux executable must be linked the way Lean links its own: with the toolchain's
+  # `leanc`, which brings its clang, its glibc and its libc++. Linking the same archives with the
+  # system gcc builds, then jumps into data at start (a segfault in the runtime's initialisation).
+  defp link_leanc(config, prefix, lean_lib, wanted, objects, staged, log) do
+    leanc = Path.join([prefix, "bin", "leanc"])
+
+    names =
+      wanted
+      |> Enum.uniq()
+      |> Enum.sort_by(fn
+        "Lean" -> 0
+        "leancpp" -> 1
+        "Std" -> 2
+        "Init" -> 3
+      end)
+      |> Enum.map(&("-l" <> &1))
+
+    args =
+      ["-o", staged | objects] ++
+        ["-L", lean_lib, "-L", Path.join(prefix, "lib")] ++
+        ["-Wl,--start-group"] ++
+        names ++
+        ["-lleanrt", "-luv", "-lgmp", "-Wl,--end-group"] ++
+        ["-L", ei_dir("lib"), "-lei", "-lpthread"]
+
+    if File.exists?(leanc) do
+      with {:ok, _} <- cc(%{config | cc: leanc}, args, staged, log), do: {:ok, staged}
+    else
+      {:error, "leanler: the toolchain has no #{leanc}"}
     end
   end
 
@@ -203,47 +236,35 @@ defmodule Leanler.Build do
     end
   end
 
-  defp link_static(config, prefix, flavor, archives, objects, staged, log) do
-    # On Linux the runtime is built against the toolchain's own libc++, not libstdc++.
-    cpp =
-      case flavor do
-        :darwin -> []
-        :linux -> Enum.map(["libc++.a", "libc++abi.a", "libunwind.a"], &Path.join([prefix, "lib", &1]))
-      end
-
-    needed = archives ++ cpp
-    missing = Enum.reject(needed, &File.exists?/1)
+  # macOS: the static archives link with the system compiler.
+  defp link_static(config, archives, objects, staged, log) do
+    missing = Enum.reject(archives, &File.exists?/1)
 
     if missing != [] do
       {:error, "leanler: toolchain archives missing: #{Enum.join(missing, ", ")}"}
     else
-      system = if flavor == :darwin, do: ["-lc++", "-lpthread"], else: ["-lm", "-ldl", "-lpthread"]
-
       args =
         case config.mode do
           :nif ->
             ["-dynamiclib", "-undefined", "dynamic_lookup", "-o", staged | objects] ++
-              group(flavor, archives) ++ system
+              archives ++ ["-lc++", "-lpthread"]
 
           :cnode ->
-            strip = if flavor == :darwin, do: ["-Wl,-dead_strip"], else: ["-Wl,--gc-sections"]
-
             ["-o", staged | objects] ++
-              strip ++ group(flavor, needed) ++ ["-L", ei_dir("lib"), "-lei"] ++ system
+              ["-Wl,-dead_strip"] ++
+              archives ++ ["-L", ei_dir("lib"), "-lei", "-lc++", "-lpthread"]
         end
 
       with {:ok, _} <- cc(config, args, staged, log), do: {:ok, staged}
     end
   end
 
-  defp group(:linux, archives), do: ["-Wl,--start-group" | archives] ++ ["-Wl,--end-group"]
-  defp group(:darwin, archives), do: archives
-
+  # Read from the architecture string (`aarch64-apple-darwin24.6.0`), which Dialyzer cannot fold
+  # to the platform it runs on, so both branches stay checked.
   defp platform do
-    case :os.type() do
-      {:unix, :darwin} -> {:darwin, []}
-      {:unix, _} -> {:linux, []}
-    end
+    if :erlang.system_info(:system_architecture) |> List.to_string() |> String.contains?("darwin"),
+      do: {:darwin, []},
+      else: {:linux, []}
   end
 
   defp erts_include do
