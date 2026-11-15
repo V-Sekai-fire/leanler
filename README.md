@@ -3,8 +3,11 @@
 Call Lean 4 from Elixir as an OTP NIF or a C node. You write no C.
 
 Mark a Lean function `@[export c_symbol]`, list it in `mix.exs`, and `mix compile` does the rest.
-Leanler is the Lean counterpart of [thanos/mojoler](https://github.com/thanos/mojoler): same idea,
-different language, and a C node mode as well as a NIF.
+Leanler is modelled on [thanos/mojoler](https://github.com/thanos/mojoler), which does this for
+Mojo: a Mix compiler builds the native library, and an Elixir call runs the body in the other
+language. Leanler keeps that shape for Lean 4 and adds a C node mode beside the NIF. It shares no
+code with mojoler; the design, the compiler-in-`mix.exs` approach and the "no hand-written C
+layer" goal are theirs. Thank you to thanos for the idea.
 
 ## Use
 
