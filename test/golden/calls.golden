@@ -1,0 +1,26 @@
+# Each entry: {function, arguments, exact answer}. Checked against the NIF and the C node.
+[
+  {:add, [20, 22], {:ok, 42}},
+  {:add, [0, 0], {:ok, 0}},
+  {:add, [18_446_744_073_709_551_615, 1], {:ok, 0}},
+  {:add, [18_446_744_073_709_551_615, 18_446_744_073_709_551_615], {:ok, 18_446_744_073_709_551_614}},
+  {:greet, ["world"], {:ok, "hello, world"}},
+  {:greet, [""], {:ok, "hello, "}},
+  {:greet, ["wörld ✓ 𝄞"], {:ok, "hello, wörld ✓ 𝄞"}},
+  {:greet, [<<0, 1, 0>>], {:ok, <<"hello, ", 0, 1, 0>>}},
+  {:even, [0], {:ok, true}},
+  {:even, [7], {:ok, false}},
+  {:even, [18_446_744_073_709_551_615], {:ok, false}},
+  {:double, [0], {:ok, 0}},
+  {:double, [21], {:ok, 42}},
+  {:double, [4_611_686_018_427_387_903], {:ok, 9_223_372_036_854_775_806}},
+  {:double, [4_611_686_018_427_387_904], {:error, :nat_too_large}},
+  {:double, [18_446_744_073_709_551_615], {:error, :nat_too_large}},
+  {:flip, [true], {:ok, false}},
+  {:flip, [false], {:ok, true}},
+  {:add, [-1, 2], {:error, :badarg}},
+  {:add, [1.0, 2], {:error, :badarg}},
+  {:greet, [:world], {:error, :badarg}},
+  {:flip, [1], {:error, :badarg}},
+  {:double, [18_446_744_073_709_551_616], {:error, :badarg}}
+]

@@ -41,7 +41,7 @@ defmodule Mix.Tasks.Compile.Leanler do
   @impl true
   def clean do
     work = Path.join(Mix.Project.build_path(), "leanler")
-    File.rm_rf(work)
+    _ = File.rm_rf(work)
     :ok
   end
 end

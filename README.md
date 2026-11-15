@@ -105,11 +105,22 @@ Requires elan (`lake` and `lean` on `PATH`), a C compiler, Elixir 1.18+, and OTP
 ## Test
 
 ```
-mix test        # unit tests, plus an end-to-end build of test/fixture in both modes
+mix test              # 61 tests: 4 doctests, 19 properties, 38 examples
+mix dialyzer          # types (dialyxir); runs clean
+LEANLER_REGOLD=1 mix test test/golden_test.exs   # rewrite golden files; read the diff first
 ```
 
-The end-to-end test builds a small Lake project, calls every type through the NIF and the C
-node, sends bad arguments, and checks that the C node process dies with its owner.
+The suite builds `test/fixture` (a small Lake project) once, in both modes, and runs everything
+against the real NIF and the real C node.
+
+| Kind | File | What it pins |
+| ---- | ---- | ------------ |
+| **Golden** | `test/golden_test.exs`, `test/golden/` | The generated NIF and C node shims for a fixed config, byte for byte. A table of 23 calls with exact answers, run against both builds. |
+| **Invariant** | `test/invariant_test.exs` | [StreamData](https://hex.pm/packages/stream_data) properties, on both builds: `UInt64` wraps, `greet` returns the input byte for byte (valid UTF-8, NUL, 4-byte code points), `Nat` doubles exactly or says `:nat_too_large` at 2^63, a bad argument is `{:error, :badarg}` and does not poison the next call, and the NIF and C node agree. On the generator: every export is bound, braces balance, output is deterministic and never raises into the VM, name mangling is C-safe and injective, `Config.parse` never raises. |
+| **Control** | `test/control_test.exs` | The checks can fail. The reference passes every invariant. Each invariant has a planted wrong implementation and must catch it. The generators must reach 0, 2^64-1, multi-byte text and NUL. A changed golden expectation, a wrong implementation and a one-character change to a shim are each reported. |
+
+Changing the Lean fixture's `greet` or the generator's scheduler flag turns the golden and
+invariant tests red, and reverting turns them green.
 
 ## Licence
 

@@ -25,8 +25,8 @@ defmodule Mix.Tasks.Leanler.Gen do
 
       case Keyword.fetch(opts, :out) do
         {:ok, dir} ->
-          File.mkdir_p(dir)
-          File.write(Path.join(dir, "shim.c"), text)
+          :ok = File.mkdir_p(dir)
+          :ok = File.write(Path.join(dir, "shim.c"), text)
           Mix.shell().info("wrote #{Path.join(dir, "shim.c")}")
 
         :error ->

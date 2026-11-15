@@ -90,13 +90,13 @@ defmodule Leanler.Lake do
     defined = definitions(config)
 
     with {:ok, roots} <- resolve_roots(config, defined) do
-      {units, toolchain} = walk(Enum.map(roots, & &1.symbol), defined, %{}, MapSet.new())
+      {units, toolchain} = walk(Enum.map(roots, & &1.symbol), defined, %{}, [])
 
       {:ok,
        %{
          units: units |> Map.values() |> Enum.sort_by(& &1.symbol),
          roots: roots,
-         toolchain: toolchain |> MapSet.to_list() |> Enum.sort()
+         toolchain: toolchain |> Enum.uniq() |> Enum.sort()
        }}
     end
   end
@@ -139,7 +139,7 @@ defmodule Leanler.Lake do
         walk(rest ++ refs, defined, Map.put(seen, symbol, unit), toolchain)
 
       true ->
-        walk(rest, defined, seen, MapSet.put(toolchain, toolchain_lib(symbol)))
+        walk(rest, defined, seen, [toolchain_lib(symbol) | toolchain])
     end
   end
 

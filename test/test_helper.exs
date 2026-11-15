@@ -1,1 +1,2 @@
-ExUnit.start()
+:ok = Leanler.Fixture.start()
+ExUnit.start(exclude: [])
