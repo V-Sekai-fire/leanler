@@ -76,17 +76,26 @@ defmodule Leanler.CNode do
             env: [{~c"LEANLER_COOKIE", Atom.to_charlist(Node.get_cookie())}]
           ])
 
-        receive do
-          {:leanler_ready, remote} when is_pid(remote) ->
-            {:ok, %{port: port, remote: remote, pending: %{}}}
+        await_ready(port, timeout)
+    end
+  end
 
-          {^port, {:exit_status, status}} ->
-            {:stop, {:cnode_exit, status}}
-        after
-          timeout ->
-            Port.close(port)
-            {:stop, :cnode_start_timeout}
-        end
+  # Output the node prints while it starts (a crash report, a trace) is logged, not dropped.
+  defp await_ready(port, timeout) do
+    receive do
+      {:leanler_ready, remote} when is_pid(remote) ->
+        {:ok, %{port: port, remote: remote, pending: %{}}}
+
+      {^port, {:data, data}} ->
+        Logger.warning("leanler cnode: #{String.trim(data)}")
+        await_ready(port, timeout)
+
+      {^port, {:exit_status, status}} ->
+        {:stop, {:cnode_exit, status}}
+    after
+      timeout ->
+        Port.close(port)
+        {:stop, :cnode_start_timeout}
     end
   end
 
